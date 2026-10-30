@@ -43,26 +43,17 @@
       cursor: pointer;
       font-weight: 500;
     }
-    button.nav-btn {
-      background: var(--accent);
-      color: #ffffff;
-      border: none;
-    }
+    button.nav-btn { background: var(--accent); color: #ffffff; border: none; }
     button.nav-btn:hover { opacity: 0.9; }
+    button.audio-btn { background: #16a34a; color: white; border: none; }
+    button.audio-btn.stop { background: #dc2626; }
     .content-area {
       max-width: 820px;
       margin: 24px auto;
       padding: 0 10px;
     }
-    h1 {
-      font-size: 26px;
-      margin-bottom: 18px;
-      font-family: inherit;
-    }
-    .passage {
-      font-size: 18px;
-      text-align: justify;
-    }
+    h1 { font-size: 26px; margin-bottom: 18px; font-family: inherit; }
+    .passage { font-size: 18px; text-align: justify; }
     p { margin-bottom: 14px; }
     .v-num {
       font-size: 0.75em;
@@ -71,10 +62,7 @@
       vertical-align: super;
       margin-right: 5px;
     }
-    .loading {
-      font-style: italic;
-      color: var(--verse-num);
-    }
+    .loading { font-style: italic; color: var(--verse-num); }
   </style>
 </head>
 <body>
@@ -84,6 +72,8 @@
     <select id="chapterSelect"></select>
     <button class="nav-btn" onclick="prevChapter()">&larr; Prev</button>
     <button class="nav-btn" onclick="nextChapter()">Next &rarr;</button>
+    <button class="audio-btn" onclick="playChapter()">🔊 Play</button>
+    <button class="audio-btn stop" onclick="stopAudio()">⏹ Stop</button>
   </div>
 
   <div class="content-area">
@@ -137,14 +127,11 @@ function populateChapters() {
   }
 }
 
-bookSel.addEventListener('change', () => {
-  populateChapters();
-  loadChapter();
-});
-
+bookSel.addEventListener('change', () => { populateChapters(); loadChapter(); });
 chSel.addEventListener('change', loadChapter);
 
 async function loadChapter() {
+  stopAudio();
   const b = books[bookSel.value];
   const c = chSel.value;
   titleEl.textContent = `${b.n} ${c}`;
@@ -153,45 +140,51 @@ async function loadChapter() {
 
   try {
     const res = await fetch(`https://bolls.life/get-chapter/KJV/${b.id}/${c}/`);
-    if (!res.ok) throw new Error('Primary source error');
+    if (!res.ok) throw new Error('Primary error');
     const data = await res.json();
-    contentEl.innerHTML = data.map(v => `<p><span class="v-num">${v.verse}</span>${v.text}</p>`).join('');
+    contentEl.innerHTML = data.map(v => {
+      // Regex wipes out the scholarly numbers
+      const cleanText = v.text.replace(/[0-9]+/g, '').trim();
+      return `<p><span class="v-num">${v.verse}</span><span class="v-text">${cleanText}</span></p>`;
+    }).join('');
   } catch (err) {
     try {
       const res2 = await fetch(`https://bible-api.com/${encodeURIComponent(b.n)}+${c}?translation=kjv`);
       const data2 = await res2.json();
-      contentEl.innerHTML = data2.verses.map(v => `<p><span class="v-num">${v.verse}</span>${v.text.trim()}</p>`).join('');
+      contentEl.innerHTML = data2.verses.map(v => {
+        const cleanText = v.text.replace(/[0-9]+/g, '').trim();
+        return `<p><span class="v-num">${v.verse}</span><span class="v-text">${cleanText}</span></p>`;
+      }).join('');
     } catch (fallbackErr) {
-      contentEl.innerHTML = '<p class="loading">Unable to fetch passage. Please try refreshing.</p>';
+      contentEl.innerHTML = '<p class="loading">Unable to fetch passage.</p>';
     }
   }
 }
 
 function nextChapter() {
-  const currentBook = books[bookSel.value];
   let curCh = parseInt(chSel.value, 10);
-  if (curCh < currentBook.c) {
-    chSel.value = curCh + 1;
-    loadChapter();
-  } else if (parseInt(bookSel.value, 10) < books.length - 1) {
-    bookSel.value = parseInt(bookSel.value, 10) + 1;
-    populateChapters();
-    chSel.value = 1;
-    loadChapter();
-  }
+  if (curCh < books[bookSel.value].c) { chSel.value = curCh + 1; loadChapter(); }
+  else if (bookSel.value < books.length - 1) { bookSel.value++; populateChapters(); chSel.value = 1; loadChapter(); }
 }
 
 function prevChapter() {
   let curCh = parseInt(chSel.value, 10);
-  if (curCh > 1) {
-    chSel.value = curCh - 1;
-    loadChapter();
-  } else if (parseInt(bookSel.value, 10) > 0) {
-    bookSel.value = parseInt(bookSel.value, 10) - 1;
-    populateChapters();
-    chSel.value = books[bookSel.value].c;
-    loadChapter();
-  }
+  if (curCh > 1) { chSel.value = curCh - 1; loadChapter(); }
+  else if (bookSel.value > 0) { bookSel.value--; populateChapters(); chSel.value = books[bookSel.value].c; loadChapter(); }
+}
+
+function playChapter() {
+  stopAudio();
+  const verses = document.querySelectorAll('.v-text');
+  if (verses.length === 0) return;
+  const fullText = Array.from(verses).map(v => v.textContent).join(' ');
+  const utterance = new SpeechSynthesisUtterance(fullText);
+  utterance.rate = 0.9; // Reads at a comfortable pace
+  window.speechSynthesis.speak(utterance);
+}
+
+function stopAudio() {
+  window.speechSynthesis.cancel();
 }
 
 populateChapters();
